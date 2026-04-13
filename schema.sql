@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS fellowships (
     url         TEXT        NOT NULL,
     date        TEXT,                      -- publication date (raw string)
     deadline    TEXT,                      -- application deadline (raw string)
-    department  TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
