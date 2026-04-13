@@ -8,6 +8,7 @@ notifications when new entries are found.
 
 import logging
 import os
+import re
 import time
 
 import requests
@@ -90,18 +91,6 @@ def format_notification(fellowship: dict) -> str:
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
-
-def build_page_url(page: int) -> str:
-    """Return the URL for the given page number (1-indexed).
-
-    UNIVR uses Joomla CMS whose pagination query parameter is ``limitstart``
-    (0-based offset).  The number of items per page defaults to 10, but we
-    detect the actual value from the first page at runtime.
-    """
-    if page == 1:
-        return BASE_URL
-    return BASE_URL  # offset added dynamically once page_size is known
-
 
 def build_offset_url(offset: int) -> str:
     if offset == 0:
@@ -203,7 +192,6 @@ def parse_fellowships(soup: BeautifulSoup, base_url: str = "https://www.univr.it
 
 def _find_date(parts: list[str]) -> str | None:
     """Try to extract a publication date from a list of text strings."""
-    import re
     date_re = re.compile(r"\b\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4}\b")
     for part in parts:
         match = date_re.search(part)
@@ -214,7 +202,6 @@ def _find_date(parts: list[str]) -> str | None:
 
 def _find_deadline(parts: list[str]) -> str | None:
     """Try to extract a deadline from a list of text strings."""
-    import re
     for part in parts:
         lower = part.lower()
         if any(kw in lower for kw in ("scadenza", "deadline", "entro il", "entro")):
@@ -241,7 +228,6 @@ def detect_page_size(soup: BeautifulSoup) -> int:
         return 10  # sensible default for UNIVR/Joomla
 
     # Look for limitstart values in pagination links
-    import re
     offsets: list[int] = []
     for a in pagination.find_all("a", href=True):
         match = re.search(r"limitstart=(\d+)", a["href"])
@@ -260,7 +246,6 @@ def has_next_page(soup: BeautifulSoup, current_offset: int, page_size: int) -> b
     pagination = soup.find(class_=lambda c: c and "pagination" in c.lower())
     if not pagination:
         return False
-    import re
     for a in pagination.find_all("a", href=True):
         match = re.search(r"limitstart=(\d+)", a["href"])
         if match and int(match.group(1)) > current_offset:
