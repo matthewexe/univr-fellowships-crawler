@@ -2,38 +2,33 @@ name: UNIVR Fellowship Crawler
 
 on:
   schedule:
-    # Run every day at 08:00 UTC
     - cron: "0 8 * * *"
-  workflow_dispatch: # allow manual trigger
-
-#env:
-#  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  workflow_dispatch:
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    permissions: {}  # no GitHub token permissions needed
+    # Minimum permissions needed
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Install uv (cache enabled)
+      - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-            enable-cache: true
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxml2-dev libxslt-dev
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv python install
-
-      - name: Install uv dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Run crawler
+        timeout-minutes: 5
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
