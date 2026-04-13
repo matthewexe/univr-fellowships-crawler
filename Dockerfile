@@ -14,8 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY crawler.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
-# Schedule crawler to run once a day at 08:00 UTC
-# Redirect output to docker logs via /proc/1/fd/1
+# Schedule crawler to run once a day at 08:00 UTC.
+# Output is forwarded to Docker logs via /proc/1/fd/1 (cron is PID 1 in this container).
 RUN echo "0 8 * * * root cd /app && python crawler.py >> /proc/1/fd/1 2>&1" \
     > /etc/cron.d/univr-crawler \
     && chmod 0644 /etc/cron.d/univr-crawler
