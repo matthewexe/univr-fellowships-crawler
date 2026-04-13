@@ -19,7 +19,7 @@ from supabase import create_client, Client
 load_dotenv()
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def send_telegram_message(text: str) -> None:
         response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
     except requests.RequestException as exc:
-        logger.error("Failed to send Telegram message: %s", exc)
+        logger.debug("Failed to send Telegram message: %s", exc)
 
 
 def format_notification(fellowship: dict) -> str:
@@ -110,7 +110,7 @@ def fetch_page(url: str) -> BeautifulSoup | None:
         response.raise_for_status()
         return BeautifulSoup(response.text, "html.parser")
     except requests.RequestException as exc:
-        logger.error("Failed to fetch %s: %s", url, exc)
+        logger.debug("Failed to fetch %s: %s", url, exc)
         return None
 
 
@@ -263,16 +263,16 @@ def has_next_page(soup: BeautifulSoup, current_offset: int, page_size: int) -> b
 # ---------------------------------------------------------------------------
 
 def crawl(client: Client) -> None:
-    logger.info("Starting crawl of %s", BASE_URL)
+    logger.debug("Starting crawl of %s", BASE_URL)
 
     # Fetch the first page to detect page size
     first_soup = fetch_page(BASE_URL)
     if first_soup is None:
-        logger.error("Could not fetch the first page. Aborting.")
+        logger.debug("Could not fetch the first page. Aborting.")
         return
 
     page_size = detect_page_size(first_soup)
-    logger.info("Detected page size: %d", page_size)
+    logger.debug("Detected page size: %d", page_size)
 
     offset = 0
     total_new = 0
@@ -282,19 +282,19 @@ def crawl(client: Client) -> None:
             soup = first_soup
         else:
             url = build_offset_url(offset)
-            logger.info("Fetching page at offset %d: %s", offset, url)
+            logger.debug("Fetching page at offset %d: %s", offset, url)
             soup = fetch_page(url)
             if soup is None:
-                logger.error("Could not fetch page at offset %d. Stopping.", offset)
+                logger.debug("Could not fetch page at offset %d. Stopping.", offset)
                 break
             time.sleep(REQUEST_DELAY)
 
         fellowships = parse_fellowships(soup)
         if not fellowships:
-            logger.info("No fellowships found at offset %d. Stopping.", offset)
+            logger.debug("No fellowships found at offset %d. Stopping.", offset)
             break
 
-        logger.info("Found %d fellowships on page (offset=%d)", len(fellowships), offset)
+        logger.debug("Found %d fellowships on page (offset=%d)", len(fellowships), offset)
 
         all_known = True
         for fellowship in fellowships:
@@ -302,14 +302,14 @@ def crawl(client: Client) -> None:
                 logger.debug("Already known: %s", fellowship["title"])
             else:
                 all_known = False
-                logger.info("New fellowship: %s", fellowship["title"])
+                logger.debug("New fellowship: %s", fellowship["title"])
                 insert_fellowship(client, fellowship)
                 total_new += 1
                 send_telegram_message(format_notification(fellowship))
 
         # Early-stop: every entry on this page is already stored
         if all_known:
-            logger.info(
+            logger.debug(
                 "All fellowships on offset=%d are already in the database. "
                 "Stopping early.",
                 offset,
@@ -317,12 +317,12 @@ def crawl(client: Client) -> None:
             break
 
         if not has_next_page(soup, offset, page_size):
-            logger.info("No more pages. Crawl complete.")
+            logger.debug("No more pages. Crawl complete.")
             break
 
         offset += page_size
 
-    logger.info("Crawl finished. %d new fellowship(s) found.", total_new)
+    logger.debug("Crawl finished. %d new fellowship(s) found.", total_new)
 
 
 def main() -> None:
