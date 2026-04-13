@@ -9,6 +9,7 @@ on:
 jobs:
   crawl:
     runs-on: ubuntu-latest
+    permissions: {}  # no GitHub token permissions needed
 
     steps:
       - name: Checkout repository
