@@ -22,11 +22,13 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
             enable-cache: true
-      - name: Install uv dependencies
-        run: uv sync
 
       - name: Install dependencies
         run: uv python install
+
+      - name: Install uv dependencies
+        run: uv sync
+
 
       - name: Run crawler
         env:
@@ -34,4 +36,4 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python crawler.py
+        run: uv run crawler.py
