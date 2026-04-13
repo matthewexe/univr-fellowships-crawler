@@ -18,14 +18,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - name: Install uv (cache enabled)
+        uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.12"
-          cache: pip
+            enable-cache: true
+      - name: Install uv dependencies
+        run: uv sync
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: uv python install
 
       - name: Run crawler
         env:
