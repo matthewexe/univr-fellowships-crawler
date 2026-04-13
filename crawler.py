@@ -339,18 +339,7 @@ def main() -> None:
         )
 
     client = get_supabase_client()
-
-    poll_interval = int(os.environ.get("POLL_INTERVAL_SECONDS", "3600"))
-
-    if poll_interval <= 0:
-        # Run once and exit (useful for cron-based scheduling)
-        crawl(client)
-    else:
-        logger.info("Running in polling mode. Interval: %d seconds.", poll_interval)
-        while True:
-            crawl(client)
-            logger.info("Sleeping for %d seconds…", poll_interval)
-            time.sleep(poll_interval)
+    crawl(client)
 
 
 if __name__ == "__main__":

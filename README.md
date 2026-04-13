@@ -8,7 +8,7 @@ Previously seen fellowships are stored in **Supabase** to avoid duplicate notifi
 - Scrapes all pages of the UNIVR fellowship listing
 - **Early-stop**: stops crawling as soon as an entire page contains only already-known entries
 - Sends rich Telegram notifications (title, deadline, department, link)
-- Configurable polling interval or one-shot execution (for external schedulers / cron)
+- Runs once a day (08:00 UTC) via an internal cron job — no polling loop needed
 - Docker-first: single `docker compose up -d` to deploy
 
 ---
@@ -56,7 +56,6 @@ cp .env.example .env
 | `SUPABASE_KEY` | `anon` or `service_role` key |
 | `TELEGRAM_BOT_TOKEN` | Token from @BotFather |
 | `TELEGRAM_CHAT_ID` | Your chat / channel ID |
-| `POLL_INTERVAL_SECONDS` | Seconds between crawls (default `3600`). Set to `0` to run once and exit. |
 
 ### 3a. Run with Docker (recommended)
 
@@ -90,7 +89,7 @@ python crawler.py
    - If already in the database → skip.
 4. **Early stop**: if **every** entry on a page is already known, stop pagination.
 5. Otherwise fetch the next page and repeat.
-6. After finishing, sleep for `POLL_INTERVAL_SECONDS` and start again.
+6. The Docker container runs the crawler once a day at **08:00 UTC** via cron.
 
 ---
 
@@ -99,6 +98,7 @@ python crawler.py
 ```
 .
 ├── crawler.py           # Main crawler script
+├── entrypoint.sh        # Docker entrypoint (exports env vars for cron)
 ├── requirements.txt     # Python dependencies
 ├── Dockerfile
 ├── docker-compose.yml
