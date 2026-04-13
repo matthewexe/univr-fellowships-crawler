@@ -1,6 +1,6 @@
 import dataclasses
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 
 class Page:
@@ -40,6 +40,6 @@ class Record:
 
         link = soup.select_one('.card-record-title a')['href']
         title = soup.select_one('.card-record-title a').text.strip()
-        start_date, end_date, *_ = soup.select_one('.card-record-dettagli').children
+        start_date, end_date = list(filter(lambda x: isinstance(x, str) and "-" in x, soup.select_one('.card-record-dettagli').children))
         is_open = 'aperto' in soup.select_one('.card-record-title .label-success').text.strip().lower()
         return Record(link, title, start_date.text.strip(), end_date.text.strip(), is_open)
