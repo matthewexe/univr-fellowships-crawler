@@ -5,11 +5,12 @@ Crawls https://www.univr.it/it/concorsi/borse-di-studio-di-ricerca for new
 research fellowship postings, stores them in Supabase, and sends Telegram
 notifications when new entries are found.
 """
-
+import asyncio
 import logging
 import os
 import time
 
+import httpx
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -53,8 +54,8 @@ def insert_fellowship(client: Client, fellowship: Record) -> None:
         "id": fellowship.link,  # Using the link as a unique ID
         "title": fellowship.title,
         "url": fellowship.link,
-        "deadline": fellowship.start_date,
-        "date": fellowship.end_date,
+        "deadline": fellowship.end_date,
+        "date": fellowship.start_date,
     }
     client.table("fellowships").insert(record).execute()
 
@@ -64,9 +65,10 @@ def insert_fellowship(client: Client, fellowship: Record) -> None:
 # ---------------------------------------------------------------------------
 
 
-def send_telegram_message(text: str) -> None:
+async def send_telegram_message(text: str) -> None:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    thread_id = os.environ.get("TELEGRAM_THREAD_ID")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -74,11 +76,14 @@ def send_telegram_message(text: str) -> None:
         "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
-    try:
-        response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        logger.error("Failed to send Telegram message: %s", exc)
+    if thread_id:
+        payload["message_thread_id"] = thread_id
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            # response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.error("Failed to send Telegram message: %s", exc)
 
 
 def format_notification(fellowship: Record) -> str:
@@ -92,7 +97,7 @@ def format_notification(fellowship: Record) -> str:
     return "\n".join(lines)
 
 
-def fetch_page(url: str) -> Page | None:
+async def fetch_page(url: str) -> Page | None:
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (compatible; UniVR-Fellowship-Crawler/1.0; "
@@ -100,49 +105,74 @@ def fetch_page(url: str) -> Page | None:
         )
     }
     try:
-        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
-        return Page(soup)
-    except requests.RequestException as exc:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "lxml")
+            return Page(soup)
+    except httpx.HTTPError as exc:
         logger.error("Failed to fetch %s: %s", url, exc)
         return None
-
 
 # ---------------------------------------------------------------------------
 # Main crawling logic
 # ---------------------------------------------------------------------------
 
 
-def crawl(client: Client) -> None:
-    logger.info("Starting crawl of %s", BASE_URL)
-
-    # Fetch the first page to detect page size
-    link = BASE_URL
-
-    while link:
-        logger.info("Fetching page: %s", link)
-        page = fetch_page(link)
-        if page is None:
-            logger.error("Could not fetch the page. Stopping.")
+async def telegram_sender(queue: asyncio.Queue) -> None:
+    """Consumes the queue and sends messages with rate-limit spacing."""
+    while True:
+        text = await queue.get()
+        if text is None:  # sentinel — signals shutdown
+            queue.task_done()
             break
-        logger.info("Processing page: %s", page.soup.title.string.strip())
-        fellowships = page.get_all_records()
-        logger.info("Found %d fellowships on this page.", len(fellowships))
-
-        for fellowship in fellowships:
-            if fellowship_exists(client, fellowship.link):
-                logger.debug("Already known: %s", fellowship.title)
-            else:
-                logger.info("New fellowship: %s", fellowship.title)
-                insert_fellowship(client, fellowship)
-                send_telegram_message(format_notification(fellowship))
-
-        link = page.get_next_link()
-        time.sleep(REQUEST_DELAY)
+        await send_telegram_message(text)
+        queue.task_done()
+        await asyncio.sleep(3)
 
 
-def main() -> None:
+async def crawl(client: Client) -> None:
+    logger.info("Starting crawl of %s", BASE_URL)
+    link = BASE_URL
+    seen_links: set[str] = set()
+
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    sender = asyncio.create_task(telegram_sender(queue))  # single background worker
+
+    try:
+        while link:
+            if link in seen_links:
+                logger.error("Pagination loop detected at %s. Stopping.", link)
+                break
+            seen_links.add(link)
+
+            logger.info("Fetching page: %s", link)
+            page = await fetch_page(link)
+            if page is None:
+                logger.error("Could not fetch the page. Stopping.")
+                break
+
+            fellowships = page.get_all_records()
+            logger.info("Found %d fellowships on this page.", len(fellowships))
+
+            for fellowship in fellowships:
+                if fellowship_exists(client, fellowship.link):
+                    logger.debug("Already known: %s", fellowship.title)
+                else:
+                    logger.info("New fellowship: %s", fellowship.title)
+                    insert_fellowship(client, fellowship)
+                    await queue.put(format_notification(fellowship))  # enqueue, don't send directly
+
+            link = page.get_next_link()
+            await asyncio.sleep(REQUEST_DELAY)
+
+    finally:
+        await queue.put(None)   # tell the sender to stop
+        await sender            # wait for all queued messages to flush
+
+    logger.info("Crawl completed.")
+
+async def main() -> None:
     required_vars = [
         "SUPABASE_URL",
         "SUPABASE_KEY",
@@ -156,8 +186,8 @@ def main() -> None:
         )
 
     client = get_supabase_client()
-    crawl(client)
+    await crawl(client)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
